@@ -1,41 +1,52 @@
 # router_forwarder.py
 
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.types import Message
+from aiogram.filters import Message
 from config import load_config
-from classifier import classify_content
-from utils import forward_message, log_action, is_admin, get_configured_channels
+from utils import (
+    is_admin,
+    forward_message,
+    classify_message,
+    get_channel_ids_by_category,
+    log_action,
+    update_forward_status
+)
 
-forward_router = Router()
+forwarder_router = Router()
 config = load_config()
 
-@forward_router.message(F.forward_date)
-async def handle_forwarded_message(message: Message):
-    channels = get_configured_channels()
-    if not channels:
-        await message.answer("❌ No channel mappings set. Use /set_channel to configure.")
+@forwarder_router.message()
+async def handle_forward(message: Message):
+    # Skip messages from self or system messages
+    if message.chat.type != "channel":
         return
 
-    try:
-        content_type = classify_content(message)
-        if content_type not in channels:
-            await log_action(f"❗ Unknown content type: {content_type}")
-            return
-
-        targets = channels[content_type]
-        await forward_message(message, targets['main'])
-        await forward_message(message, targets['backup'])
-
-        await log_action(
-            f"✅ Forwarded to {content_type}\nMain: {targets['main']}\nBackup: {targets['backup']}"
-        )
-
-    except Exception as e:
-        await log_action(f"❌ Error in forwarding: {e}")
-
-@forward_router.message(F.text == "/reload")
-async def reload_config_cmd(message: Message):
-    if not is_admin(message.from_user.id):
+    # Only process messages from the configured source channel
+    if str(message.chat.id) != str(config.source_channel_id):
         return
-    load_config(force_reload=True)
-    await message.answer("🔄 Config reloaded.")
+
+    # Classify the message into category
+    category = classify_message(message)
+    if not category:
+        await log_action(message, "❌ Unclassified", "unknown", None)
+        return
+
+    # Get target channels
+    targets = get_channel_ids_by_category(category)
+    if not targets:
+        await log_action(message, f"❌ No target for '{category}'", category, None)
+        return
+
+    # Forward to main and backup
+    for target_type in ["main", "backup"]:
+        try:
+            channel_id = targets.get(target_type)
+            if not channel_id:
+                continue
+            await forward_message(message, channel_id)
+            await log_action(message, f"✅ Forwarded to {target_type}", category, channel_id)
+        except Exception as e:
+            await log_action(message, f"⚠️ Failed to forward to {target_type}: {e}", category, channel_id)
+
+    await update_forward_status(message.message_id)

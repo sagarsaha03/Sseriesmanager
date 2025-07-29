@@ -2,78 +2,56 @@
 
 import json
 import os
-from datetime import datetime
+from config import CONFIG_FILE, ADMIN_ID
 from aiogram.types import Message
+from datetime import datetime
+from aiogram import Bot
 
-CONFIG_FILE = "channel_mappings.json"
-LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")  # Optional: for logging
+CONFIG_PATH = CONFIG_FILE if os.path.exists(CONFIG_FILE) else "config.json"
 
-# --- ADMIN CHECK ---
 def is_admin(user_id: int) -> bool:
-    return str(user_id) == os.getenv("ADMIN_ID")
+    return str(user_id) == str(ADMIN_ID)
 
-# --- CHANNEL CONFIG MANAGEMENT ---
-def save_channel_mapping(category: str, main_channel: str, backup_channel: str):
-    mappings = {}
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            mappings = json.load(f)
-
-    mappings[category] = {
-        "main": main_channel,
-        "backup": backup_channel
+def save_channel_mapping(category: str, main_id: str, backup_id: str):
+    config = load_config_file()
+    config.setdefault("channel_mappings", {})[category] = {
+        "main": main_id,
+        "backup": backup_id
     }
-
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(mappings, f, indent=4)
+    save_config_file(config)
 
 def get_configured_channels():
-    if not os.path.exists(CONFIG_FILE):
+    config = load_config_file()
+    return config.get("channel_mappings", {})
+
+def load_config_file() -> dict:
+    if not os.path.exists(CONFIG_PATH):
         return {}
-    with open(CONFIG_FILE, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         return json.load(f)
 
-# --- FORWARDING FUNCTION ---
-async def forward_message(bot, message: Message, target_chat_id: int):
-    if message.photo:
-        await bot.send_photo(
-            chat_id=target_chat_id,
-            photo=message.photo[-1].file_id,
-            caption=message.caption or "",
-            parse_mode="HTML"
-        )
-    elif message.video:
-        await bot.send_video(
-            chat_id=target_chat_id,
-            video=message.video.file_id,
-            caption=message.caption or "",
-            parse_mode="HTML"
-        )
-    elif message.document:
-        await bot.send_document(
-            chat_id=target_chat_id,
-            document=message.document.file_id,
-            caption=message.caption or "",
-            parse_mode="HTML"
-        )
-    elif message.text:
-        await bot.send_message(
-            chat_id=target_chat_id,
-            text=message.text,
-            parse_mode="HTML"
-        )
+def save_config_file(config: dict):
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=4)
 
-# --- LOGGING FUNCTION ---
-async def log_action(bot, status: str, category: str, to_channel: str, message_id: int):
-    if not LOG_CHANNEL_ID:
-        return
+async def log_action(bot: Bot, log_channel_id: str, text: str):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        await bot.send_message(log_channel_id, f"🕒 {timestamp}\n{text}")
+    except Exception as e:
+        print(f"Logging failed: {e}")
 
-    log_text = (
-        f"✅ <b>Forward Status:</b> {status}\n"
-        f"📁 <b>Category:</b> {category}\n"
-        f"📤 <b>To Channel:</b> <code>{to_channel}</code>\n"
-        f"🕒 <b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"🔗 <b>Message ID:</b> <code>{message_id}</code>"
-    )
-
-    await bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_text, parse_mode="HTML")
+async def forward_message(bot: Bot, from_chat_id: int, message: Message, to_chat_id: int):
+    try:
+        if message.text:
+            await bot.send_message(to_chat_id, message.text)
+        elif message.photo:
+            await bot.send_photo(to_chat_id, message.photo[-1].file_id, caption=message.caption)
+        elif message.video:
+            await bot.send_video(to_chat_id, message.video.file_id, caption=message.caption)
+        else:
+            await bot.copy_message(to_chat_id, from_chat_id, message.message_id)
+        return True
+    except Exception as e:
+        print(f"Forwarding failed: {e}")
+        return False

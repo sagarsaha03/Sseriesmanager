@@ -1,50 +1,41 @@
-import re
+# utils.py
+import json
+from config import CONFIG_PATH, load_config
 from aiogram.types import Message
-from config import ADMIN_ID, load_config, save_config
+from datetime import datetime
 
-
-def extract_title(text: str) -> str:
-    """
-    Extract a clean title from the message text or caption.
-    Removes file extensions and quality tags.
-    """
-    if not text:
-        return ""
-
-    # Remove file extensions and resolutions
-    cleaned = re.sub(r"\.(mkv|mp4|avi|webm)$", "", text, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b(480p|720p|1080p|2160p|HDRip|BluRay|WEBRip|HEVC|x264|x265|ESubs|Hindi|Dual Audio)\b", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"[^\w\s]", " ", cleaned)  # Remove special chars
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-
-    return cleaned
-
-
-def format_log(action: str, target: str, status: str) -> str:
-    return f"✅ <b>Action:</b> {action}\n<b>To:</b> {target}\n<b>Status:</b> {status}"
-
-
-def is_admin(message: Message) -> bool:
-    """Check if the message sender is the admin."""
-    return message.from_user and message.from_user.id == ADMIN_ID
-
-
-def save_channel_mapping(source_channel_id: int, category: str, main_target_id: int, backup_target_id: int):
-    """Save channel mapping in the JSON config."""
+def is_admin(user_id: int) -> bool:
     config = load_config()
-    if "channels" not in config:
-        config["channels"] = {}
+    return user_id == config.admin_id
 
-    config["channels"][str(source_channel_id)] = {
-        "category": category,
-        "main": main_target_id,
-        "backup": backup_target_id
-    }
-
-    save_config(config)
-
-
-def get_configured_channels():
-    """Get all configured channel mappings."""
+def save_channel_mapping(category: str, main_id: str, backup_id: str):
     config = load_config()
-    return config.get("channels", {})
+    config.channels[category] = {"main": main_id, "backup": backup_id}
+    with open(CONFIG_PATH, "r+") as f:
+        data = json.load(f)
+        data["channels"] = config.channels
+        f.seek(0)
+        json.dump(data, f, indent=4)
+        f.truncate()
+
+def get_configured_channels() -> dict:
+    config = load_config()
+    return config.channels or {}
+
+def log_action(message: Message, target_chat_id: int, status: str):
+    config = load_config()
+    if not config.log_channel_id:
+        return
+
+    log_text = (
+        f"<b>🔁 Forward Log</b>\n"
+        f"📨 <b>Message ID:</b> <code>{message.message_id}</code>\n"
+        f"📤 <b>Target Channel:</b> <code>{target_chat_id}</code>\n"
+        f"📅 <b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"✅ <b>Status:</b> {status}"
+    )
+    try:
+        from main import bot
+        return bot.send_message(chat_id=config.log_channel_id, text=log_text)
+    except Exception as e:
+        print("Logging error:", e)

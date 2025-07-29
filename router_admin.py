@@ -8,7 +8,7 @@ from utils import is_admin, save_channel_mapping, get_configured_channels
 from keyboards import get_admin_keyboard
 
 admin_router = Router()
-config: Config = load_config()
+config = load_config()
 
 @admin_router.message(CommandStart())
 async def start_handler(message: Message):

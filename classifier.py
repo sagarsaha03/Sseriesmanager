@@ -2,37 +2,54 @@
 
 import re
 
-def classify_content(message):
-    text = (message.text or "") + " " + (message.caption or "")
-    text = text.lower()
+# Define categories and their keywords
+CATEGORIES = {
+    "bollywood movies": ["bollywood", "hindi movie"],
+    "hollywood movies": ["hollywood", "english movie"],
+    "south movies": ["south", "telugu", "tamil", "malayalam", "kananda"],
+    "anime": ["anime", "animation", "cartoon"],
+    "indian webseries": ["web series", "webseries", "indian series", "ullu", "voot", "alt balaji"],
+    "hollywood webseries": ["netflix", "marvel", "dc", "english series", "hbo"],
+    "asian drama": ["kdrama", "cdrama", "jdrama", "korean", "thai", "chinese"],
+    "all movies": ["movie"],
+    "all webseries": ["series", "webseries"]
+}
 
-    # Anime detection
-    if "anime" in text:
-        return "anime"
+# Define priority for fallback matching (when multiple matches)
+CATEGORY_PRIORITY = [
+    "anime",
+    "asian drama",
+    "bollywood movies",
+    "south movies",
+    "hollywood movies",
+    "indian webseries",
+    "hollywood webseries",
+    "all movies",
+    "all webseries"
+]
 
-    # Asian Drama detection
-    if any(x in text for x in ["korean", "japanese", "chinese", "thai", "asian drama"]):
-        return "asian_drama"
+def classify_message(message):
+    """Classify the message based on title or caption."""
+    text = ""
+    if message.text:
+        text = message.text.lower()
+    elif message.caption:
+        text = message.caption.lower()
 
-    # Webseries detection
-    if "webseries" in text or "web series" in text:
-        if "indian" in text or "hindi" in text:
-            return "indian_webseries"
-        elif any(x in text for x in ["english", "hollywood", "korean", "japanese", "chinese", "asian"]):
-            return "hollywood_webseries"
-        else:
-            return "all_webseries"
+    found_categories = []
 
-    # Movie detection
-    if "movie" in text or "film" in text:
-        if "south" in text or re.search(r"\b(tamil|telugu|malayalam|bengali|odia|kannada)\b", text):
-            return "south_movies"
-        elif "hollywood" in text or "english" in text:
-            return "hollywood_movies"
-        elif "hindi" in text or "bollywood" in text:
-            return "bollywood_movies"
-        else:
-            return "all_movies"
+    for category, keywords in CATEGORIES.items():
+        for keyword in keywords:
+            if re.search(r'\b' + re.escape(keyword) + r'\b', text):
+                found_categories.append(category)
+                break  # Stop checking this category if a keyword matched
 
-    # Default fallback
-    return "all_movies"
+    if not found_categories:
+        return None
+
+    # Return the highest priority category match
+    for cat in CATEGORY_PRIORITY:
+        if cat in found_categories:
+            return cat
+
+    return found_categories[0]

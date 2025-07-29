@@ -1,7 +1,6 @@
-# keyboards.py
-
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+# Paginated Help Keyboard
 def get_help_keyboard(page: int = 0):
     pages = [
         [
@@ -29,8 +28,17 @@ def get_help_keyboard(page: int = 0):
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
+# Back to Help Button
 def back_to_help_button():
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("🔙 Back to Help", callback_data="help:main")]
+    ])
+
+# Admin Panel Keyboard
+def get_admin_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("➕ Add Channel", callback_data="add_channel")],
+        [InlineKeyboardButton("🔁 Reload", callback_data="reload")],
+        [InlineKeyboardButton("📦 Status", callback_data="status")],
         [InlineKeyboardButton("🔙 Back to Help", callback_data="help:main")]
     ])

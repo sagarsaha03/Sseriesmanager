@@ -1,52 +1,73 @@
 # router_forwarder.py
 
-from aiogram import Router
+from aiogram import Router, types
 from aiogram.types import Message
-from aiogram.filters import Message
-from config import load_config
-from utils import (
-    is_admin,
-    forward_message,
-    classify_message,
-    get_channel_ids_by_category,
-    log_action,
-    update_forward_status
-)
+from config import load_config, ADMIN_ID
+from classifier import classify_title
+from utils import modify_text_and_caption, is_duplicate, mark_as_forwarded
+from aiogram.exceptions import TelegramForbiddenError, TelegramAPIError
 
-forwarder_router = Router()
-config = load_config()
+router = Router(name=__name__)
 
-@forwarder_router.message()
-async def handle_forward(message: Message):
-    # Skip messages from self or system messages
-    if message.chat.type != "channel":
+@router.message()
+async def forward_handler(msg: Message):
+    if not msg.chat or not msg.chat.id:
         return
 
-    # Only process messages from the configured source channel
-    if str(message.chat.id) != str(config.source_channel_id):
-        return
+    config = load_config()
+    src_id = str(msg.chat.id)
 
-    # Classify the message into category
-    category = classify_message(message)
+    if src_id not in config["channels"]:
+        return  # Skip unknown source
+
+    category = config["channels"][src_id].get("category")
     if not category:
-        await log_action(message, "❌ Unclassified", "unknown", None)
+        # Auto classify using title
+        title = msg.text or msg.caption or ""
+        category = classify_title(title)
+
+    target_ids = config["channels"][src_id].get("targets", [])
+    backup_ids = config["channels"][src_id].get("backups", [])
+
+    if not target_ids:
+        await msg.bot.send_message(ADMIN_ID, f"⚠️ No target channel set for source `{src_id}`.")
         return
 
-    # Get target channels
-    targets = get_channel_ids_by_category(category)
-    if not targets:
-        await log_action(message, f"❌ No target for '{category}'", category, None)
+    title = msg.text or msg.caption or ""
+
+    if is_duplicate(title, src_id):
+        duplicate_link = f"https://t.me/c/{str(src_id)[4:]}/{msg.message_id}"
+        await msg.bot.send_message(
+            ADMIN_ID,
+            f"⚠️ Duplicate detected in same channel:\n🔗 [View Message]({duplicate_link})\n\nTitle:\n`{title}`",
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
         return
 
-    # Forward to main and backup
-    for target_type in ["main", "backup"]:
+    new_text, new_caption = modify_text_and_caption(msg)
+
+    success_count = 0
+    fail_count = 0
+
+    for channel_id in target_ids + backup_ids:
         try:
-            channel_id = targets.get(target_type)
-            if not channel_id:
+            if msg.text:
+                await msg.bot.send_message(channel_id, new_text or msg.text)
+            elif msg.photo:
+                await msg.bot.send_photo(channel_id, photo=msg.photo[-1].file_id, caption=new_caption or msg.caption)
+            elif msg.document:
+                await msg.bot.send_document(channel_id, document=msg.document.file_id, caption=new_caption or msg.caption)
+            else:
                 continue
-            await forward_message(message, channel_id)
-            await log_action(message, f"✅ Forwarded to {target_type}", category, channel_id)
-        except Exception as e:
-            await log_action(message, f"⚠️ Failed to forward to {target_type}: {e}", category, channel_id)
+            success_count += 1
+        except (TelegramForbiddenError, TelegramAPIError) as e:
+            await msg.bot.send_message(ADMIN_ID, f"❌ Failed to forward to `{channel_id}`:\n`{e}`")
+            fail_count += 1
 
-    await update_forward_status(message.message_id)
+    mark_as_forwarded(title, src_id)
+
+    await msg.bot.send_message(
+        ADMIN_ID,
+        f"✅ Forward Report:\n• Source: `{src_id}`\n• Category: `{category}`\n• Title: `{title[:60]}...`\n• ✅ Success: {success_count} | ❌ Failed: {fail_count}"
+    )

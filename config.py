@@ -1,29 +1,35 @@
-# config.py
-
-import json
+import sqlite3
 from pathlib import Path
 
-CONFIG_PATH = Path("data/config.json")
-
-# Your bot token and admin ID
-BOT_TOKEN = "8016591770:AAFXBKlZS0HRlm1ThGhOKXmNymAHHvnNTDE"
+DB_PATH = Path("sseriesmanager.db")
 ADMIN_ID = 1588777572
 
-# Load config from file
-def load_config():
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {
-            "channels": {},     # source_id: {category, targets, backups}
-            "tmdb_enabled": False,
-            "tmdb_key": "",
-            "delay": 3
-        }
-
-# Save config to file
-def save_config(data):
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+def setup_db():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    # Configuration table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
+    
+    # Channels table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS channels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL UNIQUE,
+        channel_name TEXT,
+        role TEXT CHECK(role IN ('source', 'log', 'target', 'backup'))
+    )
+    """)
+    
+    # Forwarding rules
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pattern TEXT NOT NULL,
+        category TEXT NOT NULL,
+        main_channel

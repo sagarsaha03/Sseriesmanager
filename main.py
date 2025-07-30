@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import Config, setup_db
+from config import setup_db
 from router_admin import admin_router
 from router_forwarder import forward_router
 from handlers.help import help_router

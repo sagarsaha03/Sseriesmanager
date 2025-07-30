@@ -1,33 +1,23 @@
 # classifier.py
 
-CATEGORIES = {
-    "all movies": ["movie", "film", "720p", "1080p"],
-    "bollywood movies": ["hindi movie", "bollywood"],
-    "hollywood movies": ["english movie", "hollywood"],
-    "south movies": ["telugu", "tamil", "malayalam", "kannada"],
-    "all webseries": ["webseries", "series", "season"],
-    "indian webseries": ["hindi webseries", "ullu", "voot", "zee5", "mx player"],
-    "hollywood webseries": ["netflix", "amazon", "hbo", "english webseries"],
-    "asian drama": ["kdrama", "k-drama", "jdrama", "cdrama", "thai", "korean"],
-    "anime": ["anime", "animated", "cartoon"]
-}
+import re
 
-def classify_content(text: str) -> list:
-    matches = []
-    text_lower = text.lower()
+def classify_title(title: str) -> str:
+    title = title.lower()
 
-    for category, keywords in CATEGORIES.items():
-        for keyword in keywords:
-            if keyword in text_lower:
-                matches.append(category)
-                break
-
-    # Ensure “all movies” and “all webseries” are always included
-    if any(cat for cat in matches if "movie" in cat):
-        if "all movies" not in matches:
-            matches.append("all movies")
-    if any(cat for cat in matches if "webseries" in cat or "drama" in cat or "anime" in cat):
-        if "all webseries" not in matches:
-            matches.append("all webseries")
-
-    return matches
+    # Priority order matters
+    if "anime" in title:
+        return "anime"
+    if any(x in title for x in ["webseries", "web series", "series", "tvf", "kdrama", "jdrama", "cdrama", "drama"]):
+        if any(x in title for x in ["korean", "chinese", "japanese", "thai", "asian"]):
+            return "asian_drama"
+        if any(x in title for x in ["netflix", "amazon", "prime", "hotstar", "voot", "zee5", "mx", "ullu", "tvf", "altbalaji"]):
+            return "indian_webseries"
+        return "hollywood_webseries"
+    if any(x in title for x in ["hindi", "bollywood", "punjabi", "gujarati", "bhojpuri", "marathi"]):
+        return "bollywood_movie"
+    if any(x in title for x in ["english", "hollywood"]):
+        return "hollywood_movie"
+    if any(x in title for x in ["malayalam", "tamil", "telugu", "kannada", "odia", "bengali"]):
+        return "south_movie"
+    return "all_movies"

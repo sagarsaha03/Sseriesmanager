@@ -1,43 +1,38 @@
 # keyboards.py
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def get_admin_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("📡 List Channels", callback_data="admin:list_channels")],
-        [InlineKeyboardButton("➕ Add Channel", callback_data="admin:add_channel")],
-        [InlineKeyboardButton("🧠 Toggle TMDB", callback_data="admin:toggle_tmdb")],
-        [InlineKeyboardButton("ℹ️ Help", callback_data="help:main")]
-    ])
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="➕ Add Channel", callback_data="admin:add_channel")
+    keyboard.button(text="📋 List Channels", callback_data="admin:list_channels")
+    keyboard.button(text="🔁 Reload Config", callback_data="admin:reload")
+    keyboard.adjust(1)
+    return keyboard.as_markup()
 
-def get_help_keyboard(page: int = 0):
-    pages = [
+def get_duplicate_action_keyboard(original_msg_id: int, chat_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
         [
-            ("🔧 Settings Commands", "page:1"),
-            ("📊 Channel Commands", "page:2"),
-        ],
-        [
-            ("🧠 TMDB Commands", "page:3"),
-            ("🆘 Bot Commands", "page:4"),
+            InlineKeyboardButton(
+                text="✅ Keep Both",
+                callback_data=f"dup:keep:{chat_id}:{original_msg_id}"
+            ),
+            InlineKeyboardButton(
+                text="🗑️ Delete New",
+                callback_data=f"dup:delete:{chat_id}:{original_msg_id}"
+            )
         ]
-    ]
-
-    keyboard = [
-        [InlineKeyboardButton(text=btn[0], callback_data=btn[1]) for btn in pages[page]]
-    ]
-
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"nav:{page - 1}"))
-    if page < len(pages) - 1:
-        nav_buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"nav:{page + 1}"))
-
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-def back_to_help_button():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("🔙 Back to Help", callback_data="help:main")]
     ])
+
+def get_help_keyboard(pages: list[str], current_index: int):
+    keyboard = InlineKeyboardBuilder()
+
+    if current_index > 0:
+        keyboard.button(text="⬅️ Prev", callback_data=f"help:page:{current_index-1}")
+    keyboard.button(text=f"{current_index+1}/{len(pages)}", callback_data="help:noop")
+    if current_index < len(pages) - 1:
+        keyboard.button(text="➡️ Next", callback_data=f"help:page:{current_index+1}")
+
+    keyboard.adjust(3)
+    return keyboard.as_markup()

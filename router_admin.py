@@ -1,46 +1,84 @@
 # router_admin.py
 
 from aiogram import Router, F
-from aiogram.types import Message
-from aiogram.filters import CommandStart, Command
-from config import Config, load_config
-from utils import is_admin, save_channel_mapping, get_configured_channels
+from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from aiogram.filters import Command
+from config import ADMIN_ID, load_config, save_config
 from keyboards import get_admin_keyboard
 
-admin_router = Router()
-config = load_config()
+router = Router(name=__name__)
 
-@admin_router.message(CommandStart())
-async def start_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    await message.answer("👋 Welcome to SSeriesManager Bot!", reply_markup=get_admin_keyboard())
+def is_admin(msg: Message) -> bool:
+    return msg.from_user.id == ADMIN_ID
 
-@admin_router.message(Command("set_channel"))
-async def set_channel_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
+@router.message(Command("start"))
+async def start_cmd(msg: Message):
+    if is_admin(msg):
+        await msg.answer("👋 Welcome to SSeriesManager Admin Panel!", reply_markup=get_admin_keyboard())
 
-    args = message.text.split()
-    if len(args) != 4:
-        await message.answer("❗ Usage:\n/set_channel <category> <main_channel_id> <backup_channel_id>")
-        return
+@router.message(Command("set_channel"))
+async def set_channel_cmd(msg: Message):
+    if not is_admin(msg): return
 
-    _, category, main_id, backup_id = args
-    save_channel_mapping(category.lower(), main_id, backup_id)
-    await message.answer(f"✅ Channel mapping set for '{category}'")
+    if not msg.reply_to_message:
+        return await msg.reply("❗Please reply to a message from the channel to set it.")
 
-@admin_router.message(Command("list_channels"))
-async def list_channels_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
+    channel_id = msg.reply_to_message.forward_from_chat.id if msg.reply_to_message.forward_from_chat else None
+    if not channel_id:
+        return await msg.reply("⚠️ Unable to detect channel ID. Please forward a post from the channel and reply to that.")
 
-    mappings = get_configured_channels()
-    if not mappings:
-        await message.answer("⚠️ No channels configured.")
-        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Set as Source", callback_data=f"set_source:{channel_id}")],
+        [InlineKeyboardButton(text="Set as Main Target", callback_data=f"set_target:{channel_id}")],
+        [InlineKeyboardButton(text="Set as Backup", callback_data=f"set_backup:{channel_id}")]
+    ])
+    await msg.reply(f"🛠 What role should this channel have?\nChannel ID: `{channel_id}`", reply_markup=keyboard)
 
-    text = "<b>📡 Configured Channels:</b>\n"
-    for cat, ids in mappings.items():
-        text += f"\n<b>{cat.title()}</b>\n➡️ Main: <code>{ids['main']}</code>\n🔁 Backup: <code>{ids['backup']}</code>\n"
-    await message.answer(text)
+@router.callback_query(F.data.startswith("set_"))
+async def handle_set_channel_callback(callback: CallbackQuery):
+    role, channel_id = callback.data.split(":")
+    config = load_config()
+
+    if role == "set_source":
+        config["channels"][channel_id] = {
+            "category": None,
+            "targets": [],
+            "backups": []
+        }
+        await callback.message.edit_text(f"✅ Set as Source Channel: `{channel_id}`")
+    elif role == "set_target":
+        # You must first add as source
+        found = False
+        for src_id, val in config["channels"].items():
+            if channel_id in val["targets"]:
+                found = True
+                break
+        if not found:
+            for src_id in config["channels"]:
+                config["channels"][src_id]["targets"].append(channel_id)
+                found = True
+                break
+        await callback.message.edit_text(f"✅ Set as Main Target Channel: `{channel_id}`")
+    elif role == "set_backup":
+        found = False
+        for src_id in config["channels"]:
+            config["channels"][src_id]["backups"].append(channel_id)
+            found = True
+            break
+        await callback.message.edit_text(f"✅ Set as Backup Channel: `{channel_id}`")
+
+    save_config(config)
+
+@router.message(Command("list_channels"))
+async def list_channels_cmd(msg: Message):
+    if not is_admin(msg): return
+
+    config = load_config()
+    text = "**📋 Configured Channels:**\n\n"
+    for src, info in config["channels"].items():
+        text += f"🔹 Source: `{src}`\n"
+        text += f"   ├ Category: `{info.get('category')}`\n"
+        text += f"   ├ Targets: {', '.join([f'`{x}`' for x in info.get('targets', [])]) or 'None'}\n"
+        text += f"   └ Backups: {', '.join([f'`{x}`' for x in info.get('backups', [])]) or 'None'}\n\n"
+
+    await msg.reply(text or "⚠️ No channels configured.")

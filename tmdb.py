@@ -2,47 +2,55 @@
 
 import aiohttp
 import logging
-from config import load_config
+from config import config
 
-config = load_config()
-TMDB_API_KEY = config.tmdb_api_key
+API_KEY = config.get("tmdb_api_key", "")
 
-async def get_tmdb_data(title: str):
-    if not TMDB_API_KEY:
+BASE_URL = "https://api.themoviedb.org/3"
+
+HEADERS = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json;charset=utf-8"
+}
+
+
+async def search_tmdb(query):
+    if not API_KEY:
         return None
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={title}"
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                results = data.get("results", [])
-                if not results:
-                    return None
-                result = results[0]
-                media_type = result.get("media_type")
-                language = result.get("original_language", "")
-                title = result.get("title") or result.get("name") or ""
+    url = f"{BASE_URL}/search/multi?query={query}&include_adult=false&language=en-US&page=1"
 
-                if media_type == "movie":
-                    if language == "hi":
-                        return ["bollywood movies", "all movies"]
-                    elif language in ["ta", "te", "ml", "kn", "bn", "pa"]:
-                        return ["south movies", "all movies"]
-                    else:
-                        return ["hollywood movies", "all movies"]
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, headers=HEADERS) as response:
+                data = await response.json()
+                return data.get("results", [])
+        except Exception as e:
+            logging.exception(f"TMDB search failed: {e}")
+            return None
 
-                elif media_type == "tv":
-                    if language == "hi":
-                        return ["indian webseries", "all webseries"]
-                    elif language in ["ko", "ja", "zh", "th"]:
-                        return ["asian drama", "all webseries"]
-                    else:
-                        return ["hollywood webseries", "all webseries"]
 
-                return []
-    except Exception as e:
-        logging.error(f"TMDB error: {e}")
-        return None
+async def get_tmdb_type(title: str) -> str:
+    results = await search_tmdb(title)
+    if not results:
+        return "all_movies"
+
+    top = results[0]
+    media_type = top.get("media_type", "")
+    origin_country = top.get("origin_country", [])
+    original_language = top.get("original_language", "")
+
+    if media_type == "tv":
+        if original_language in ["hi"] or "IN" in origin_country:
+            return "indian_webseries"
+        if original_language in ["ko", "zh", "ja"]:
+            return "asian_drama"
+        return "hollywood_webseries"
+    elif media_type == "movie":
+        if original_language in ["hi"] or "IN" in origin_country:
+            return "bollywood_movie"
+        if original_language in ["ta", "te", "ml", "kn", "bn", "or"]:
+            return "south_movie"
+        return "hollywood_movie"
+    else:
+        return "all_movies"

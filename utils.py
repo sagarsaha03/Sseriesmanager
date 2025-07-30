@@ -1,57 +1,49 @@
 # utils.py
 
-import json
-import os
-from config import CONFIG_FILE, ADMIN_ID
+import re
+import logging
 from aiogram.types import Message
-from datetime import datetime
-from aiogram import Bot
 
-CONFIG_PATH = CONFIG_FILE if os.path.exists(CONFIG_FILE) else "config.json"
 
-def is_admin(user_id: int) -> bool:
-    return str(user_id) == str(ADMIN_ID)
+def extract_title_from_text(text: str) -> str:
+    """
+    Extracts the main title from a forwarded message's text or caption.
+    """
+    # Remove common patterns like resolution, quality, codec, etc.
+    clean_text = re.sub(
+        r"[\[\(](1080p|720p|480p|HDRip|WEBRip|HEVC|x265|x264|ESubs|Dual Audio|Multi Audio|Hindi|English|Japanese|Tamil|Telugu|Malayalam|Kannada|Chinese|Punjabi|ORG-2\.0)[\]\)]",
+        "", text, flags=re.IGNORECASE)
 
-def save_channel_mapping(category: str, main_id: str, backup_id: str):
-    config = load_config_file()
-    config.setdefault("channel_mappings", {})[category] = {
-        "main": main_id,
-        "backup": backup_id
-    }
-    save_config_file(config)
+    # Remove extra brackets and years
+    clean_text = re.sub(r"\{.*?\}|\[.*?\]|\(.*?\)", "", clean_text)
+    clean_text = re.sub(r"\b(19|20)\d{2}\b", "", clean_text)
 
-def get_configured_channels():
-    config = load_config_file()
-    return config.get("channel_mappings", {})
+    # Remove special characters and extra spaces
+    title = re.sub(r"[^A-Za-z0-9\s:,'\-]", "", clean_text)
+    title = re.sub(r"\s+", " ", title).strip()
 
-def load_config_file() -> dict:
-    if not os.path.exists(CONFIG_PATH):
-        return {}
-    with open(CONFIG_PATH, "r") as f:
-        return json.load(f)
+    return title
 
-def save_config_file(config: dict):
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=4)
 
-async def log_action(bot: Bot, log_channel_id: str, text: str):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        await bot.send_message(log_channel_id, f"🕒 {timestamp}\n{text}")
-    except Exception as e:
-        print(f"Logging failed: {e}")
+def format_forward_log(title: str, status: str, target: str):
+    return f"📦 **Forwarded** `{title}`\n✅ Status: `{status}`\n📤 Sent to: `{target}`"
 
-async def forward_message(bot: Bot, from_chat_id: int, message: Message, to_chat_id: int):
-    try:
-        if message.text:
-            await bot.send_message(to_chat_id, message.text)
-        elif message.photo:
-            await bot.send_photo(to_chat_id, message.photo[-1].file_id, caption=message.caption)
-        elif message.video:
-            await bot.send_video(to_chat_id, message.video.file_id, caption=message.caption)
-        else:
-            await bot.copy_message(to_chat_id, from_chat_id, message.message_id)
-        return True
-    except Exception as e:
-        print(f"Forwarding failed: {e}")
-        return False
+
+def is_duplicate(title: str, channel_id: int, database: dict) -> int | None:
+    """
+    Check if a title exists in the same channel in the database.
+    Return original message_id if duplicate exists.
+    """
+    if channel_id not in database:
+        return None
+    for msg_id, saved_title in database[channel_id].items():
+        if saved_title.lower() == title.lower():
+            return msg_id
+    return None
+
+
+def save_title(title: str, channel_id: int, message_id: int, database: dict):
+    if channel_id not in database:
+        database[channel_id] = {}
+    database[channel_id][message_id] = title
+    logging.info(f"Saved title for duplicate check: {title} -> {message_id}")

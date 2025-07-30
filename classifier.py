@@ -1,23 +1,19 @@
-# classifier.py
-
 import re
 
-def classify_title(title: str) -> str:
-    title = title.lower()
-
-    # Priority order matters
-    if "anime" in title:
-        return "anime"
-    if any(x in title for x in ["webseries", "web series", "series", "tvf", "kdrama", "jdrama", "cdrama", "drama"]):
-        if any(x in title for x in ["korean", "chinese", "japanese", "thai", "asian"]):
-            return "asian_drama"
-        if any(x in title for x in ["netflix", "amazon", "prime", "hotstar", "voot", "zee5", "mx", "ullu", "tvf", "altbalaji"]):
-            return "indian_webseries"
-        return "hollywood_webseries"
-    if any(x in title for x in ["hindi", "bollywood", "punjabi", "gujarati", "bhojpuri", "marathi"]):
-        return "bollywood_movie"
-    if any(x in title for x in ["english", "hollywood"]):
-        return "hollywood_movie"
-    if any(x in title for x in ["malayalam", "tamil", "telugu", "kannada", "odia", "bengali"]):
-        return "south_movie"
-    return "all_movies"
+def classify_content(text):
+    patterns = {
+        "SERIES": r"\b(SEASON|S\d{1,2}|EPISODE|EP|SERIES)\b",
+        "MOVIE": r"\b(MOVIE|FILM|CINEMA|MOV)\b",
+        "DOCUMENTARY": r"\b(DOCUMENTARY|DOC|DOCU)\b",
+        "ANIME": r"\b(ANIME|MANGA|EPISODE)\b",
+        "SPORTS": r"\b(SPORTS|SOCCER|FOOTBALL|BASKETBALL|MATCH)\b",
+    }
+    
+    if not text:
+        return "OTHER"
+    
+    text = text.upper()
+    for category, pattern in patterns.items():
+        if re.search(pattern, text):
+            return category
+    return "OTHER"

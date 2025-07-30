@@ -1,26 +1,29 @@
 # config.py
 
 import json
-import os
-from dataclasses import dataclass
+from pathlib import Path
 
-CONFIG_FILE = "config.json"
+CONFIG_PATH = Path("data/config.json")
 
-@dataclass
-class Config:
-    bot_token: str
-    admin_id: int
-    tmdb_api_key: str = ""
+# Your bot token and admin ID
+BOT_TOKEN = "8016591770:AAFXBKlZS0HRlm1ThGhOKXmNymAHHvnNTDE"
+ADMIN_ID = 1588777572
 
-def load_config() -> Config:
-    if not os.path.exists(CONFIG_FILE):
-        raise FileNotFoundError(f"{CONFIG_FILE} not found")
+# Load config from file
+def load_config():
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        return {
+            "channels": {},     # source_id: {category, targets, backups}
+            "tmdb_enabled": False,
+            "tmdb_key": "",
+            "delay": 3
+        }
 
-    with open(CONFIG_FILE, "r") as f:
-        data = json.load(f)
-
-    return Config(
-        bot_token=data["bot_token"],
-        admin_id=int(data["admin_id"]),
-        tmdb_api_key=data.get("tmdb_api_key", "")
-    )
+# Save config to file
+def save_config(data):
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
